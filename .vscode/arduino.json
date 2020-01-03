@@ -1,0 +1,8 @@
+{
+    "port": "COM5",
+    "board": "arduino:avr:pro",
+    "configuration": "cpu=16MHzatmega168",
+    "programmer": "AVRISP mkII",
+    "sketch": "AlarmClock.ino",
+    "output": "../ArduinoOutput"
+}

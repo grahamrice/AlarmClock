@@ -1,6 +1,7 @@
 //************libraries**************//
 #include <Arduino.h>
 #include <Wire.h>
+#include <avr/interrupt.h>
 //#include <TimeLib.h>
 #include "RTClib.h"
 //#include <LED_Display_Wrapper.h>
@@ -150,7 +151,7 @@ Serial.write(_str_buffer,7);
   //LEDdisplay.FillTextBuffer(_str_buffer);
 }
 
-/*void update_display()
+void update_display()
 { 
   uint16_t UI_Leds = 0;
   switch(sec_flash_counter){
@@ -216,7 +217,7 @@ Serial.write(_str_buffer,7);
 
  // LEDdisplay.writeDigitRaw(6, UI_Leds);
 //  LEDdisplay.writeDisplay();
-}*/
+}
 
 void sound_alarm()
 {
@@ -286,16 +287,20 @@ int check_buttons()
   return result;
 }
 
+//ISR(_VECTOR(14)) //interrupt every 50ms
 ISR(TIMER1_OVF_vect)
 {
   TCNT1 = TIMER_RESET;
-  if(++interrupt_counter == 4){
+  
+  interrupt_flags |= FLAGS_BUTTONS; //buttons every 50ms
+  
+  if(++interrupt_counter == 4){ //display every 200ms
     interrupt_counter = 0;
     interrupt_flags |= FLAGS_DISPLAY;
     interrupt_counter2++;  
   }
-  interrupt_flags |= FLAGS_BUTTONS;
-  if(interrupt_counter2 == 2)
+  
+  if(interrupt_counter2 == 2) //sound every 400ms
   {
     interrupt_counter2 = 0;
     interrupt_flags |= FLAGS_SOUND;
@@ -312,7 +317,7 @@ void setup_rtc()
     Serial.write("RTC NOT running!\n",18);
     rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   }else{
-    Serial.write("RTC is running!\n",17);
+    Serial.println("RTC is running!\n");
     DateTime now = rtc.now();
     // Set the date and time at compile time
     Serial.print(now.hour());
@@ -329,9 +334,7 @@ void setup()
   pinMode(BUTTON3,INPUT); //inc
   pinMode(BUTTON4,INPUT); //alarm
   pinMode(LED,OUTPUT);
-  //pinMode(buzzer, OUTPUT); // Set buzzer as an output
-
-  //Wire.begin();
+  pinMode(buzzer, OUTPUT); // Set buzzer as an output
 
   Serial.begin(115200);
   while(!Serial);
@@ -340,6 +343,8 @@ void setup()
   delay(500);
 
   setup_rtc();
+
+  delay(500);
 
   int menu=0;
 
@@ -351,6 +356,9 @@ void setup()
   
   //LEDdisplay.BLINK();
 
+  TCCR1A = 0;
+  TCCR1B = 0;
+
   noInterrupts(); //setup timer for periodic interrupts now that everything is ready
 
   TCNT1 = TIMER_RESET;      //for 50ms overflow = 3125*256/16MHz
@@ -360,26 +368,27 @@ void setup()
   interrupts();
 }
 
-void loop(){}
-
-/*void loop()
+void loop()
 { 
   int buttons = 0;
   static int menu_timeout = -1;
   static int led_counter = 0;
+  static int bc, dc;
   
-  if((interrupt_flags & FLAGS_DISPLAY) == FLAGS_DISPLAY) update_display();
+  if((interrupt_flags & FLAGS_DISPLAY) == FLAGS_DISPLAY) { update_display(); dc++;}
 
-  if((interrupt_flags & FLAGS_BUTTONS) == FLAGS_BUTTONS) buttons = check_buttons();
+  if((interrupt_flags & FLAGS_BUTTONS) == FLAGS_BUTTONS) { buttons = check_buttons(); bc++;}
 
   if((interrupt_flags & FLAGS_SOUND) == FLAGS_SOUND) sound_alarm();
   
   interrupt_flags = 0;
 
-  check_alarm();
+  //check_alarm();
 
   if( buttons != 0 )
   {
+    Serial.print("\nButtons:");
+    Serial.print(buttons);
     DateTime current = rtc.now();
     if((alarm_status & ALARM_TRG) == ALARM_TRG)
     {
@@ -535,9 +544,9 @@ void loop(){}
     led_counter = 0;
     digitalWrite(LED,!digitalRead(LED));
   }
-}*/
+}
 
-/*void DisplayDateTime (bool h, bool m, bool s)
+void DisplayDateTime (bool h, bool m, bool s)
 {
   static int old_secs = 0;
 // We show the current date and time
@@ -547,7 +556,7 @@ void loop(){}
     Serial.println(now.second());
     old_secs = now.second();
   }
-}*/
+}
 
 void add_snooze()
 {
@@ -559,7 +568,7 @@ void add_snooze()
   }
 }
 
-/*void check_alarm()
+void check_alarm()
 {
   DateTime now = rtc.now();
   if ( now.hour() == alarmHours && now.minute() == alarmMinutes && now.second() == 0)
@@ -569,4 +578,4 @@ void add_snooze()
   {
     alarm_status |= ALARM_TRG;
   }
-}*/
+}
