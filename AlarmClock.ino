@@ -9,7 +9,7 @@
 //************************************//
 RTC_DS1307 rtc;
 
-//LED_Display_Wrapper LEDdisplay = LED_Display_Wrapper();
+//LED_Display_Wrapper LEDdisplay;
 
 //************Button*****************//
 int BUTTON1=6; // Button SET MENU'
@@ -51,7 +51,8 @@ uint16_t blink_char = BLINK_CURSOR;
 #define TIME_ALARM_M      5
 #define TIME_SNOOZE       6
 #define TIME_ALARM_STATUS 7
-#define TIME_AL_TONE      8
+#define TIME_ALARM_DISPLAY 8
+#define TIME_AL_TONE      9
 #define DISPLAY_OFF       0
 uint8_t current_display = TIME_CURRENT;
 
@@ -95,6 +96,7 @@ uint8_t menu_mode = 0;
 #define MENU_SAL_SN 5
 #define MENU_SAL_TN 6
 #define MENU_DSP_AL 7
+#define MENU_STS_AL 8
 
 #define RAW_LEDS_0 0x0003
 #define RAW_LEDS_1 0x000C
@@ -139,7 +141,7 @@ void display_time(int H, int M, int S, bool p)
   
   if(p) Serial.println(_str_buffer);
   //Serial.println("");
- // LEDdisplay.FillTextBuffer(_str_buffer);
+  //LEDdisplay.FillTextBuffer(_str_buffer);
 }
 
 void display_snooze_time(int ss)
@@ -148,7 +150,7 @@ void display_snooze_time(int ss)
   sprintf(_str_buffer,"SNZ %02d",ss);
   Serial.write(_str_buffer,7);
   Serial.println(" ");
-  // LEDdisplay.FillTextBuffer(_str_buffer);
+  //LEDdisplay.FillTextBuffer(_str_buffer);
 }
 
 void display_alarm_status(bool s){
@@ -226,6 +228,9 @@ void update_display()
                       else display_snooze_time(snooze_time);
                       if(sec_flash_counter < 3) UI_Leds |= RAW_LEDS_W;
                       break;
+    case TIME_ALARM_DISPLAY: display_time(alarmHours,alarmMinutes, -1, true);
+                             UI_Leds |= (alarm_status & ALARM_SET) ? RAW_LEDS_W : 0;
+                             break;    
     case TIME_ALARM_STATUS: display_alarm_status((alarm_status & ALARM_SET) == ALARM_SET);
                             if(sec_flash_counter == 2)
                             {
@@ -237,8 +242,8 @@ void update_display()
                        
   }
 
- // LEDdisplay.writeDigitRaw(6, UI_Leds);
-//  LEDdisplay.writeDisplay();
+  //LEDdisplay.writeDigitRaw(6, UI_Leds);
+  //LEDdisplay.writeDisplay();
 }
 
 void sound_alarm()
@@ -295,6 +300,16 @@ int check_buttons()
         button_time[j] = (-1) * HOLD_HOLD2;
         holdholdflag = true;
       }
+
+      if(button_time[j] > HOLD_HOLD1) //still pressed and we've reached the hold threshold
+      {
+        result[0] |= (mask << 4);
+        button_time[j]= (-1) * HOLD_HOLD2; //if we're going to carry on holding then we'll count upwards so we don't trigger a touch again;
+        holdholdflag = true;
+      }else{
+        if(button_time[j] > HOLD_HOLD2) holdholdtemp[j]= (-1) * HOLD_HOLD2;
+      }
+
     }  
     else if(button_time[j] != 0)                    //if not has it been pressed before?
     {
@@ -303,15 +318,6 @@ int check_buttons()
       else if(button_time[j] > TOUCH_THRESH)  result[1] |= mask; //(else) we've touched it, so issue that command
 
       else button_time[j] = 0; //button no longer pressed, so clear hold time. 
-    }
-
-    if(button_time[j] > HOLD_HOLD1) //still pressed and we've reached the hold threshold
-    {
-      result[0] |= (mask << 4);
-      button_time[j]= (-1) * HOLD_HOLD2; //if we're going to carry on holding then we'll count upwards so we don't trigger a touch again;
-      holdholdflag = true;
-    }else{
-      if(button_time[j] > HOLD_HOLD2) holdholdtemp[j]= (-1) * HOLD_HOLD2;
     }
 
   }
@@ -344,8 +350,16 @@ int check_buttons()
   if(res != 0)
   {
     if(!holdholdflag) for(j = 0; j < 4; j++) button_time[j] = 0;
-    Serial.print("\n\nButton press: ");
+    Serial.print("\n\nBp: ");
     Serial.println(res);
+    if(res == 16)
+    {
+      Serial.print("Bt:");
+      Serial.print(button_time[0]);
+      Serial.print(button_time[1]);
+      Serial.print(button_time[2]);
+      Serial.print(button_time[3]);
+    }
     press_complete = TOUCH_THRESH;
   }
 
@@ -418,6 +432,7 @@ void setup()
   for(int j = 0; j < 4; j++) button_time[j] = 0;
   alarm_status = ALARM_OFF;
   
+  //LEDdisplay = LED_Display_Wrapper();
   //LEDdisplay.BLINK();
 
   TCCR1A = 0;
@@ -488,6 +503,10 @@ void loop()
                                   }else if(buttons == BUTTON_ALARM)
                                   {
                                     menu_mode = MENU_DSP_AL;                                  
+                                    menu_timeout = 3500;
+                                  }else if(buttons == BUTTON_MENU)
+                                  {
+                                    menu_mode = MENU_STS_AL;                                  
                                     menu_timeout = 3500;
                                   }else if(buttons == BUTTON_ALARM_H)
                                   {
@@ -567,7 +586,12 @@ void loop()
                                   break;
               case MENU_DSP_AL : if(buttons == BUTTON_MENU) alarm_status ^= ALARM_SET; //toggle alarm setting
                                   else if(buttons == BUTTON_ALARM) menu_mode = MENU_NONE;
+                                  menu_timeout = 3500;
                                   break;
+              case MENU_STS_AL : if(buttons == BUTTON_MENU) alarm_status ^= ALARM_SET; //toggle alarm setting
+                                  else if(buttons == BUTTON_ALARM) menu_mode = MENU_NONE;
+                                  menu_timeout = 3500;
+                                  break;                    
               default : menu_mode = MENU_NONE;         
       }
     }
@@ -581,7 +605,7 @@ void loop()
   if(menu_timeout >= 0)
   {
     if(menu_timeout == 0) menu_mode = MENU_NONE;
-    if(menu_timeout == 0) Serial.println("menu timed out");
+    if(menu_timeout == 0) Serial.println("menu timeout");
     menu_timeout--;
   }
 
@@ -603,8 +627,10 @@ void loop()
                         break;
     case MENU_SAL_TN : current_display = TIME_AL_TONE;
                         break;
-    case MENU_DSP_AL : current_display = TIME_ALARM_STATUS;
-                        break;    
+    case MENU_DSP_AL : current_display = TIME_ALARM_DISPLAY;
+                        break;
+    case MENU_STS_AL : current_display = TIME_ALARM_STATUS;
+                        break;
   }
 
   delay(1);
